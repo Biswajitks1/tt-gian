@@ -41,11 +41,7 @@
    // Calculator VIZ.
    m4_include_lib(https:/['']/raw.githubusercontent.com/efabless/chipcraft---mest-course/main/tlv_lib/calculator_shell_lib.tlv)
 
-\TLV calc()
-   $reset = *reset;
-   // ..calculator
-   $val1[7:0] = 8'd0;
-   
+\TLV calc()   
    |calc
       @1
          $reset = *reset;
