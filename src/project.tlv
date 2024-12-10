@@ -48,6 +48,7 @@
    
    |calc
       @1
+         $reset = *reset;
          //$val1[7:0] = >>1$out;
          $val1[7:0] = ~*ui_in[6] ? *ui_in[3:0]: $val1;
          $val2[7:0] = *ui_in[6] ? *ui_in[3:0]: $val2;
