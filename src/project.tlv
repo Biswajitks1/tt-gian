@@ -46,16 +46,16 @@
       @1
          $reset = *reset;
          //$val1[7:0] = >>1$out;
-         $val1[7:0] = ~*ui_in[6] ? *ui_in[3:0]: $val1;
-         $val2[7:0] = *ui_in[6] ? *ui_in[3:0]: $val2;
+         $val1[7:0] = ~*ui_in[6] ? *ui_in[3:0]: >>1$val1;
+         $val2[7:0] = *ui_in[6] ? *ui_in[3:0]: >>1$val2;
          $op[1:0] = *ui_in[5:4];
          $equals_in = *ui_in[7];
          $valid = $equals_in & ~(>>1$equals_in);
          //$val2[7:0] = {4'd0,*ui_in[3:0]};
-         $sum[7:0] = $valid ? $val1[7:0] + $val2[7:0] : $sum;
-         $diff[7:0] = $valid ? $val1[7:0] - $val2[7:0] : $diff;
-         $prod[7:0] = $valid ? $val1[7:0] * $val2[7:0] : $prod;
-         $quo[7:0] = $valid ? $val1[7:0] / $val2[7:0] : $quo;
+         $sum[7:0] = $valid ? $val1[7:0] + $val2[7:0] : >>1$sum;
+         $diff[7:0] = $valid ? $val1[7:0] - $val2[7:0] : >>1$diff;
+         $prod[7:0] = $valid ? $val1[7:0] * $val2[7:0] : >>1$prod;
+         $quo[7:0] = $valid ? $val1[7:0] / $val2[7:0] : >>1$quo;
          $cal_out[7:0] = $reset ? 8'b0 :
                           $op[1:0] == 2'b00
                                    ? $sum :
