@@ -91,7 +91,7 @@
          $mem[7:0] = 
                      $reset 
                            ? 8'd0 :
-                     $valid && ($op == 3'd5)
+                     !$valid && ($op == 3'd5)
                            ? >>2$out[7:0] :
                      //default      
                            >>1$mem;
