@@ -41,72 +41,106 @@
    // Calculator VIZ.
    m4_include_lib(https:/['']/raw.githubusercontent.com/efabless/chipcraft---mest-course/main/tlv_lib/calculator_shell_lib.tlv)
 
-\TLV calc()   
-   |calc
-      @1
-         $reset = *reset;
-         //$val1[7:0] = >>1$out;
-         $val1[7:0] = ~*ui_in[6] ? *ui_in[3:0]: >>1$val1;
-         $val2[7:0] = *ui_in[6] ? *ui_in[3:0]: >>1$val2;
-         $op[1:0] = *ui_in[5:4];
-         $equals_in = *ui_in[7];
-         $valid = $equals_in & ~(>>1$equals_in);
-         //$val2[7:0] = {4'd0,*ui_in[3:0]};
-         $sum[7:0] = $valid ? $val1[7:0] + $val2[7:0] : >>1$sum;
-         $diff[7:0] = $valid ? $val1[7:0] - $val2[7:0] : >>1$diff;
-         $prod[7:0] = $valid ? $val1[7:0] * $val2[7:0] : >>1$prod;
-         $quo[7:0] = $valid ? $val1[7:0] / $val2[7:0] : >>1$quo;
-         $cal_out[7:0] = $reset ? 8'b0 :
-                          $op[1:0] == 2'b00
-                                   ? $sum :
-                          $op[1:0] == 2'b01
-                                  ? $diff :
-                          $op[1:0] == 2'b10
-                                  ? $prod :
-                                      $quo;                            
-         $out[7:0] = *ui_in[7] ? $cal_out : *ui_in[3:0];
-   // Note that pipesignals assigned here can be found under /fpga_pins/fpga.
-   $digit[3:0] = |calc>>1$out[3:0];
-   m5+cal_viz(@1, m5_if(m5_in_fpga, /fpga, /top))
+\TLV calc()
    
-    
-   // Connect Tiny Tapeout outputs. Note that uio_ outputs are not available in the Tiny-Tapeout-3-based FPGA boards.
-   *uo_out = 
-         ($digit == 4'd0)
-            ? 8'b00111111 :
-         ($digit == 4'd1)
-            ? 8'b00000110 :
-         ($digit == 4'd2)
-            ? 8'b01011011 :
-         ($digit == 4'd3)
-            ? 8'b01001111 :
-         ($digit == 4'd4)
-            ? 8'b01100110 :
-         ($digit == 4'd5)
-            ? 8'b01101101 :
-         ($digit == 4'd6)
-            ? 8'b01111101 :
-         ($digit == 4'd7)
-            ? 8'b00000111 :
-         ($digit == 4'd8)
-            ? 8'b01111111 :
-         ($digit == 4'd9)
-            ? 8'b01101111 :
-         ($digit == 4'd10)
-            ? 8'b01110111 :   
-         ($digit == 4'd11)
-            ? 8'b01111100 :
-         ($digit == 4'd12)
-            ? 8'b00111001 :
-         ($digit == 4'd13)
-            ? 8'b01011110 :
-         ($digit == 4'd14)
-            ? 8'b01111001 :
-         ($digit == 4'd15)
-            ? 8'b01110001 :   
-         //default
-              8'b10000000 ;
+   
+   // ==================
+   // .. Sequential Calculator
+   |calc
+      @0
+         $reset = *reset;
+         $val2[7:0] = {4'b0000, *ui_in[3:0]};
+         $op[2:0] = *ui_in[6:4];
+         $equals_in = *ui_in[7];
+         //$valid = $reset ? 1'b0 : $equals_in & ! >>1$equals_in;
+         
+         
+         //$val2[7:0] = {4'b0, $rand2[3:0]};
+         
+         // test
+         //$val2[7:0] = 8'd1;
+         //$op[3:0] = 3'd5;
+      
+      @1
+         $valid = $reset ? 1'b0 : ($equals_in & !>>1$equals_in);
+         $val1[7:0] = >>2$out;
+         ?$valid
+            $sum[7:0] = $val1[7:0] + $val2[7:0];
+            $diff[7:0] = $val1[7:0] - $val2[7:0];
+            $prod[7:0] = $val1[7:0] * $val2[7:0];
+            $quo[7:0] = $val1[7:0] / $val2[7:0];
+      
+      @2
+         $out[7:0] = $reset 
+                           ? 8'd5 :
+                     !$valid
+                           ? >>1$out :
+                          $op[2:0] == 3'd0
+                                   ? $sum :
+                          $op[2:0] == 3'd1
+                                  ? $diff :
+                          $op[2:0] == 3'd2
+                                  ? $prod :
+                          $op[2:0] == 3'd3
+                                  ? $quo  :
+                          $op[2:0] == 3'd4
+                                  ? >>2$mem :
+                                  >>1$out;
+         
+         
+         $mem[7:0] = 
+                     $reset 
+                           ? 8'd0 :
+                     $valid && ($op == 3'd5)
+                           ? >>2$out[7:0] :
+                     //default      
+                           >>1$mem;
+         
+         $digit[3:0] = $out[3:0];
+      @3
+         *uo_out =   $digit == 4'd0
+                         ? 8'b0011_1111 :
+                     $digit == 4'd1
+                         ? 8'b00000110 :
+                     $digit == 4'd2
+                         ? 8'b01011011 :
+                     $digit == 4'd3
+                         ? 8'b01001111 :
+                     $digit == 4'd4
+                         ? 8'b01100110 :
+                     $digit == 4'd5
+                         ? 8'b01101101 :
+                     $digit == 4'd6
+                         ? 8'b01111101 :
+                     $digit == 4'd7
+                         ? 8'b00000111 :
+                     $digit == 4'd8
+                         ? 8'b01111111 :
+                     $digit == 4'd9
+                         ? 8'b01101111 :
+                     $digit == 4'd10
+                         ? 8'b01110111 :
+                     $digit == 4'd11
+                         ? 8'b01111100 :
+                     $digit == 4'd12
+                         ? 8'b00111001 :
+                     $digit == 4'd13
+                         ? 8'b01011110 :
+                     $digit == 4'd14
+                         ? 8'b01111001 :
+                     $digit == 4'd15
+                         ? 8'b01110001 :
+                         8'b00000000;
+   // ==================
+   
+   // Note that pipesignals assigned here can be found under /fpga_pins/fpga.
+   
+   
 
+   m5+cal_viz(@2, m5_if(m5_in_fpga, /fpga, /top))
+   
+   // Connect Tiny Tapeout outputs. Note that uio_ outputs are not available in the Tiny-Tapeout-3-based FPGA boards.
+   //*uo_out = 8'hFF;
    m5_if_neq(m5_target, FPGA, ['*uio_out = 8'b0;'])
    m5_if_neq(m5_target, FPGA, ['*uio_oe = 8'b0;'])
 
