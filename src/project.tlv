@@ -159,10 +159,11 @@
          ?$opcode_valid
             $opcode[6:0] = $instr[6:0];
          
+         /*
          $funct7_valid = $is_r_instr;
          ?$funct7_valid
             $funct7[6:0] = $instr[31:25];
-         
+         */
          
          $dec_bits[10:0] = {$instr[30],$funct3,$opcode};
          $is_beq = $dec_bits[9:0] == 10'b000_1100011;
