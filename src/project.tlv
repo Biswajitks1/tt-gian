@@ -2,10 +2,9 @@
 \m5
    use(m5-1.0)
    
-
    // #################################################################
    // #                                                               #
-   // #  Starting-Point Code for MEST Course Tiny Tapeout Calculator  #
+   // #  Starting-Point Code for MEST Course Tiny Tapeout RISC-V CPU  #
    // #                                                               #
    // #################################################################
    
@@ -21,11 +20,14 @@
    //-------------------------------------------------------
    
    var(in_fpga, 1)   /// 1 to include the demo board. (Note: Logic will be under /fpga_pins/fpga.)
-   var(debounce_inputs, 1)
-                     /// Legal values:
-                     ///   1: Provide synchronization and debouncing on all input signals.
-                     ///   0: Don't provide synchronization and debouncing.
-                     ///   m5_if_defined_as(MAKERCHIP, 1, 0, 1): Debounce unless in Makerchip.
+   var(debounce_inputs, 0)         /// 1: Provide synchronization and debouncing on all input signals.
+                                   /// 0: Don't provide synchronization and debouncing.
+                                   /// m5_if_defined_as(MAKERCHIP, 1, 0, 1): Debounce unless in Makerchip.
+
+   // CPU configs
+   var(num_regs, 16)  /// 32 for full reg file.
+   var(dmem_size, 8)  /// Size of DMem, a power of 2.
+   
    
    // ======================
    // Computed From Settings
@@ -34,115 +36,317 @@
    // If debouncing, a user's module is within a wrapper, so it has a different name.
    var(user_module_name, m5_if(m5_debounce_inputs, my_design, m5_my_design))
    var(debounce_cnt, m5_if_defined_as(MAKERCHIP, 1, 8'h03, 8'hff))
-
+   
+   
+   // ==================
+   // Sum 1 to 9 Program
+   // ==================
+   
+   TLV_fn(riscv_sum_prog, {
+      ~assemble(['
+         # Add 1,2,3,...,9 (in that order).
+         #
+         # Regs:
+         #  x10 (a0): In: 0, Out: final sum
+         #  x12 (a2): 10
+         #  x13 (a3): 1..10
+         #  x14 (a4): Sum
+         #
+         # External to function:
+         reset:
+            ADD x10, x0, x0             # Initialize r10 (a0) to 0.
+         # Function:
+            ADD x14, x10, x0            # Initialize sum register a4 with 0x0
+            ADDI x12, x10, 10            # Store count of 10 in register a2.
+            ADD x13, x10, x0            # Initialize intermediate sum register a3 with 0
+            JAL x4, end
+         loop:
+            ADD x14, x13, x14           # Incremental addition
+            ADDI x13, x13, 1            # Increment count register by 1
+            BLT x13, x12, loop          # If a3 is less than a2, branch to label named <loop>
+         done:
+            ADD x10, x14, x0            # Store final result to register a0 so that it can be read by main program
+            SW x10, 4(x0)
+            LW x15, 4(x0)
+         end:
+            JAL x4,loop
+            
+      '])
+   })
+   
 \SV
    // Include Tiny Tapeout Lab.
-   m4_include_lib(https:/['']/raw.githubusercontent.com/os-fpga/Virtual-FPGA-Lab/35e36bd144fddd75495d4cbc01c4fc50ac5bde6f/tlv_lib/tiny_tapeout_lib.tlv)
-   // Calculator VIZ.
-   m4_include_lib(https:/['']/raw.githubusercontent.com/efabless/chipcraft---mest-course/main/tlv_lib/calculator_shell_lib.tlv)
+   m4_include_lib(['https:/']['/raw.githubusercontent.com/os-fpga/Virtual-FPGA-Lab/5744600215af09224b7235479be84c30c6e50cb7/tlv_lib/tiny_tapeout_lib.tlv'])  
+   m4_include_lib(['https://raw.githubusercontent.com/efabless/chipcraft---mest-course/main/tlv_lib/risc-v_shell_lib.tlv'])
 
-\TLV calc()
+
+\TLV cpu()
    
-   
-   // ==================
-   // .. Sequential Calculator
-   |calc
+   m5+riscv_gen()
+   m5+riscv_sum_prog()
+   m5_define_hier(IMEM, m5_NUM_INSTRS)
+   |cpu
       @0
          $reset = *reset;
-         $val2[7:0] = {4'b0000, *ui_in[3:0]};
-         $op[2:0] = *ui_in[6:4];
-         $equals_in = *ui_in[7];
-         //$valid = $reset ? 1'b0 : $equals_in & ! >>1$equals_in;
-         
-         
-         //$val2[7:0] = {4'b0, $rand2[3:0]};
-         
-         // test
-         //$val2[7:0] = 8'd1;
-         //$op[3:0] = 3'd5;
+         $pc[31:0] =
+             //>>1$reset ? 32'd0 :
+             >>1$reset ? 32'd0 :
+             >>3$valid_taken_br ? >>3$br_tgt_pc :
+             >>3$valid_load ? >>3$inc_pc :
+             >>3$valid_jump && >>3$is_jal ? >>3$br_tgt_pc :
+             >>3$valid_jump && >>3$is_jalr ? >>3$jalr_tgt_pc :
+             //default
+                   >>1$inc_pc;
       
       @1
-         $valid = $reset ? 1'b0 : ($equals_in & !>>1$equals_in);
-         $val1[7:0] = >>2$out;
-         ?$valid
-            $sum[7:0] = $val1[7:0] + $val2[7:0];
-            $diff[7:0] = $val1[7:0] - $val2[7:0];
-            $prod[7:0] = $val1[7:0] * $val2[7:0];
-            $quo[7:0] = $val1[7:0] / $val2[7:0];
+         $inc_pc[31:0] = $pc + 32'd4;
+
+      @0
+         $imem_rd_addr[m5_IMEM_INDEX_CNT-1:0] = $pc[m5_IMEM_INDEX_CNT+1:2];
+         $imem_rd_en = ! $reset;
+         //$start = >>1$reset & !$reset;
+         //$valid = $reset ? 1'b0 : $start || >>3$valid;
+      @1
+         $instr[31:0] = $imem_rd_data;
+         
+         //type of instr   
+         $is_i_instr = $instr[6:3] == 4'b0000 ||
+                       $instr[6:2] == 5'b00100 ||
+                       $instr[6:2] == 5'b11001 ||
+                       $instr[6:2] == 5'b00100;
+         
+         $is_r_instr = $instr[6:2] == 5'b01011 ||
+                       $instr[6:2] == 5'b01100 ||
+                       $instr[6:2] == 5'b01110 ||
+                       $instr[6:2] == 5'b10100;
+                       
+         $is_b_instr = $instr[6:2] == 5'b11000;
+         
+         $is_j_instr = $instr[6:2] == 5'b11011;
+         
+         $is_s_instr = $instr[6:2] == 5'b01000 ||
+                       $instr[6:2] == 5'b01001;
+                       
+         $is_u_instr = $instr[6:2] == 5'b00101 ||
+                       $instr[6:2] == 5'b01101;
+         
+         //immediate calculation
+         $imm[31:0] = $is_i_instr ? { {21{$instr[31]}}, $instr[30:20] } :
+                      $is_s_instr ? { {21{$instr[31]}}, $instr[30:25], $instr[11:8], $instr[7] } :
+                      $is_b_instr ? { {20{$instr[31]}}, $instr[7], $instr[30:25], $instr[11:8], 1'b0 } :
+                      $is_u_instr ? { $instr[31], $instr[30:20], $instr[19:12], 12'b0 } :
+                      $is_j_instr ? { {12{$instr[31]}}, $instr[19:12], $instr[20], $instr[30:25], $instr[24:21], 1'b0 } :
+                      //default
+                                     32'd0 ;
+         //extracting the individuals
+         $rs1_valid = $is_r_instr || $is_i_instr || $is_s_instr || $is_b_instr;
+         ?$rs1_valid
+            $rs1[4:0] = $instr[19:15];
+         
+         $rs2_valid = $is_r_instr || $is_s_instr || $is_b_instr;
+         ?$rs2_valid
+            $rs2[4:0] = $instr[24:20];
+         
+         $rd_valid  = $is_r_instr || $is_i_instr || $is_u_instr || $is_j_instr;
+         ?$rd_valid
+            $rd[4:0] = $instr[11:7];
+         
+         $funct3_valid = $is_r_instr || $is_i_instr || $is_s_instr || $is_b_instr;
+         ?$funct3_valid
+            $funct3[2:0] = $instr[14:12];
+         
+         $opcode_valid = $is_r_instr || $is_i_instr || $is_s_instr || $is_b_instr || $is_u_instr || $is_j_instr;
+         ?$opcode_valid
+            $opcode[6:0] = $instr[6:0];
+         
+         $funct7_valid = $is_r_instr;
+         ?$funct7_valid
+            $funct7[6:0] = $instr[31:25];
+         
+         
+         $dec_bits[10:0] = {$instr[30],$funct3,$opcode};
+         $is_beq = $dec_bits[9:0] == 10'b000_1100011;
+         $is_bne = $dec_bits[9:0] == 10'b001_1100011;
+         $is_blt = $dec_bits[9:0] == 10'b100_1100011;
+         $is_bge = $dec_bits[9:0] == 10'b101_1100011;
+         $is_bltu = $dec_bits[9:0] == 10'b110_1100011;
+         $is_bgeu = $dec_bits[9:0] == 10'b111_1100011;
+         
+         //Rtype
+         $is_add = $dec_bits[10:0] == 11'b0_000_0110011;
+         $is_sub = $dec_bits[10:0] == 11'b1_000_0110011;
+         $is_sll = $dec_bits[10:0] == 11'b0_001_0110011;
+         $is_slt = $dec_bits[10:0] == 11'b0_010_0110011;
+         $is_sltu = $dec_bits[10:0] == 11'b0_011_0110011;
+         $is_xor = $dec_bits[10:0] == 11'b0_100_0110011;
+         $is_srl = $dec_bits[10:0] == 11'b0_101_0110011;
+         $is_sra = $dec_bits[10:0] == 11'b1_101_0110011;
+         $is_or = $dec_bits[10:0] == 11'b0_110_0110011;
+         $is_and = $dec_bits[10:0] == 11'b0_111_0110011;
+         
+         //I_type except loads and treating all loads as same
+         $is_load = $opcode == 7'b000_0011;
+         $is_addi = $dec_bits[9:0] == 10'b000_0010011;
+         $is_slti = $dec_bits[9:0] == 10'b010_0010011;
+         $is_sltiu = $dec_bits[9:0] == 10'b011_0010011;
+         $is_xori = $dec_bits[9:0] == 10'b100_0010011;
+         $is_ori = $dec_bits[9:0] == 10'b110_0010011;
+         $is_andi = $dec_bits[9:0] == 10'b111_0010011;
+         $is_slli = $dec_bits[10:0] == 11'b0_001_0010011;
+         $is_srli = $dec_bits[10:0] == 11'b0_101_0010011;
+         $is_srai = $dec_bits[10:0] == 11'b1_101_0010011;
+         $is_auipc = $opcode == 7'b001_0111;
+         $is_jalr = $dec_bits[9:0] == 10'b0001100111;
+         
+         //U_type
+         $is_lui = $opcode == 7'b0110111;
+         
+         //J_type
+         $is_jal = $opcode == 7'b1101111;
+         
       
       @2
-         $out[7:0] = $reset 
-                           ? 8'd5 :
-                     !$valid
-                           ? >>1$out :
-                          $op[2:0] == 3'd0
-                                   ? $sum :
-                          $op[2:0] == 3'd1
-                                  ? $diff :
-                          $op[2:0] == 3'd2
-                                  ? $prod :
-                          $op[2:0] == 3'd3
-                                  ? $quo  :
-                          $op[2:0] == 3'd4
-                                  ? >>2$mem :
-                                  >>1$out;
+         //register file RF_read
          
+         $br_tgt_pc[31:0] = $pc + $imm;
+         $rf_rd_en1 = $rs1_valid;
+         $rf_rd_index1[4:0] = $rs1;
+         $rf_rd_en2 = $rs2_valid;
+         $rf_rd_index2[4:0] = $rs2;
          
-         $mem[7:0] = 
-                     $reset 
-                           ? 8'd0 :
-                     !$valid && ($op == 3'd5)
-                           ? >>2$out[7:0] :
-                     //default      
-                           >>1$mem;
-         
-         $digit[3:0] = $out[3:0];
+         $src1_value[31:0] = >>1$rf_wr_en && (>>1$rd == $rs1) ? >>1$result : $rf_rd_data1;
+         $src2_value[31:0] = >>1$rf_wr_en && (>>1$rd == $rs2) ? >>1$result : $rf_rd_data2;
+         //$src1_value[31:0] = $rf_rd_data1;
+         //$src2_value[31:0] = $rf_rd_data2;
+      
       @3
-         *uo_out =   $digit == 4'd0
-                         ? 8'b0011_1111 :
-                     $digit == 4'd1
-                         ? 8'b00000110 :
-                     $digit == 4'd2
-                         ? 8'b01011011 :
-                     $digit == 4'd3
-                         ? 8'b01001111 :
-                     $digit == 4'd4
-                         ? 8'b01100110 :
-                     $digit == 4'd5
-                         ? 8'b01101101 :
-                     $digit == 4'd6
-                         ? 8'b01111101 :
-                     $digit == 4'd7
-                         ? 8'b00000111 :
-                     $digit == 4'd8
-                         ? 8'b01111111 :
-                     $digit == 4'd9
-                         ? 8'b01101111 :
-                     $digit == 4'd10
-                         ? 8'b01110111 :
-                     $digit == 4'd11
-                         ? 8'b01111100 :
-                     $digit == 4'd12
-                         ? 8'b00111001 :
-                     $digit == 4'd13
-                         ? 8'b01011110 :
-                     $digit == 4'd14
-                         ? 8'b01111001 :
-                     $digit == 4'd15
-                         ? 8'b01110001 :
-                         8'b00000000;
-   // ==================
-   
-   // Note that pipesignals assigned here can be found under /fpga_pins/fpga.
-   
-   
+         $valid = $reset ? 1'b0 :
+                  (>>1$valid_taken_br || >>2$valid_taken_br) ? 1'b0 :
+                  (>>1$is_load || >>2$is_load) ? 1'b0 :
+                  (>>1$is_jump || >>2$is_jump) ? 1'b0 :
+                  //default
+                  1'b1;
+         
+         $valid_load = $valid && $is_load;
+         
+         //alu
+         /* verilator lint_off WIDTH */
+         $sltu_rslt = $src1_value < $src2_value;
+         $sltiu_rslt = $src1_value < $imm;
 
-   m5+cal_viz(@2, m5_if(m5_in_fpga, /fpga, /top))
+         $result[31:0] =
+            $is_andi
+            ? $src1_value & $imm :
+            $is_ori
+            ? $src1_value | $imm :
+            $is_xori
+            ? $src1_value ^ $imm :
+            $is_addi
+            ? $src1_value + $imm :
+            $is_slli
+            ? $src1_value << $imm[5:0] :
+            $is_srli
+            ? $src1_value >> $imm[5:0] :
+            $is_and
+            ? $src1_value & $src2_value :
+            $is_or
+            ? $src1_value | $src2_value :
+            $is_xor
+            ? $src1_value ^ $src2_value :
+            $is_add
+            ? $src1_value + $src2_value :
+            $is_sub
+            ? $src1_value - $src2_value :
+            $is_sll
+            ? $src1_value << $src2_value[4:0] :
+            $is_srl
+            ? $src1_value >> $src2_value[4:0] :
+            $is_sltu
+            ? $src1_value < $src2_value :
+            $is_sltiu
+            ? $src1_value < $imm :
+            $is_lui
+            ? {$imm[31:12], 12'b0} :
+            $is_auipc
+            ? $pc + $imm :
+            $is_jal 
+            ? $pc + 32'd4 :
+            $is_jalr 
+            ? $pc + 32'd4 :
+            $is_srai
+            ? ({{32{$src1_value[31]}}, $src1_value} >> $imm[4:0]) :
+            $is_slt
+            ? (($src1_value[31] == $src2_value[31]) ? $sltu_rslt : {31'b0, $src1_value[31]}) :
+            $is_slti
+            ? (($src1_value[31] == $imm[31]) ? $sltiu_rslt : {31'b0, $src1_value[31]}) :
+            $is_sra
+            ? { {32{$src1_value[31]}}, $src1_value} >> $src2_value[4:0] :
+            $is_load || $is_s_instr
+            ? $src1_value + $imm :
+            32'bx ;
+         /* verilator lint_on WIDTH */
+         
+         //memory logic
+         //////write it here
+         //taken branch logic
+         
+         $taken_br = $is_beq ? ($src1_value == $src2_value) :
+                     $is_bne ? ($src1_value != $src2_value) :
+                     $is_blt ? (($src1_value < $src2_value) ^ ($src1_value[31] != $src2_value[31])) :
+                     $is_bge ? (($src1_value >= $src2_value) ^ ($src1_value[31] != $src2_value[31])) :
+                     $is_bltu ? ($src1_value < $src2_value) :
+                     $is_bgeu ? ($src1_value >= $src2_value) :
+                        1'b0;
+         
+         $valid_taken_br = $valid && $taken_br;
+         
+         //register file RF_write
+         $rf_wr_en = >>2$valid_load ? 1'b1 : $valid && (($rd == 5'b0) ? 0 : $rd_valid);
+         $rf_wr_index[4:0] =  >>2$valid_load ? >>2$rd : $rd;
+         $rf_wr_data[31:0] = >>2$valid_load ? >>2$ld_data : $result;
+         
+         //DMem
+         $dmem_wr_en = $is_s_instr;
+         $dmem_rd_en = $valid_load;
+         $dmem_addr[2:0] = $result[4:2];
+         $dmem_wr_data[31:0] = $src2_value;
+         
+         // $ld_data[31:0] = >>1$dmem_rd_data[31:0]; ---- this is wrong
+         
+         //for jump statements
+         $is_jump    =  $is_jal || $is_jalr;
+         $jalr_tgt_pc[31:0]   =  $src1_value + $imm;
+         $valid_jump =  $is_jump && $valid;
+         
+         
+      @4
+         $ld_data[31:0] = $dmem_rd_data[31:0];
+         
+      // Note that pipesignals assigned here can be found under /fpga_pins/fpga.
+
+   
+   // Assert these to end simulation (before Makerchip cycle limit).
+   // Note, for Makerchip simulation these are passed in uo_out to top-level module's passed/failed signals.
+   *passed = *top.cyc_cnt > 200;
+   *passed = |cpu/xreg[15]>>5$value == {1+2+3+4+5+6+7+8+9};
+   *failed = 1'b0;
    
    // Connect Tiny Tapeout outputs. Note that uio_ outputs are not available in the Tiny-Tapeout-3-based FPGA boards.
-   //*uo_out = 8'hFF;
+   *uo_out = {6'b0, *failed, *passed};
    m5_if_neq(m5_target, FPGA, ['*uio_out = 8'b0;'])
    m5_if_neq(m5_target, FPGA, ['*uio_oe = 8'b0;'])
+   
+   // Macro instantiations to be uncommented when instructed for:
+   //  o instruction memory
+   //  o register file
+   //  o data memory
+   //  o CPU visualization
+   |cpu
+      m5+imem(@1)    // Args: (read stage)
+      m5+rf(@2, @3)  // Args: (read stage, write stage) - if equal, no register bypass is required
+      m5+dmem(@4)    // Args: (read/write stage)
+
+   m5+cpu_viz(@4)    // For visualization, argument should be at least equal to the last stage of CPU logic. @4 would work for all labs.
 
 \SV
 
@@ -155,9 +359,7 @@ module top(input logic clk, input logic reset, input logic [31:0] cyc_cnt, outpu
    // Tiny tapeout I/O signals.
    logic [7:0] ui_in, uo_out;
    m5_if_neq(m5_target, FPGA, ['logic [7:0] uio_in, uio_out, uio_oe;'])
-   logic [31:0] r;
-   always @(posedge clk) r <= m5_if_defined_as(MAKERCHIP, 1, ['$urandom()'], ['0']);
-   assign ui_in = r[7:0];
+   assign ui_in = 8'b0;
    m5_if_neq(m5_target, FPGA, ['assign uio_in = 8'b0;'])
    logic ena = 1'b0;
    logic rst_n = ! reset;
@@ -165,8 +367,9 @@ module top(input logic clk, input logic reset, input logic [31:0] cyc_cnt, outpu
    // Instantiate the Tiny Tapeout module.
    m5_user_module_name tt(.*);
    
-   assign passed = top.cyc_cnt > 80;
-   assign failed = 1'b0;
+   // Passed/failed to control Makerchip simulation, passed from Tiny Tapeout module's uo_out pins.
+   assign passed = uo_out[0];
+   assign failed = uo_out[1];
 endmodule
 
 
@@ -192,19 +395,21 @@ module m5_user_module_name (
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
 );
-   wire reset = ! rst_n;
+   logic passed, failed;  // Connected to uo_out[0] and uo_out[1] respectively, which connect to Makerchip passed/failed.
 
+   wire reset = ! rst_n;
+   
 \TLV tt_lab()
    // Connect Tiny Tapeout I/Os to Virtual FPGA Lab.
    m5+tt_connections()
    // Instantiate the Virtual FPGA Lab.
-   m5+board(/top, /fpga, 7, $, , calc)
+   m5+board(/top, /fpga, 7, $, , cpu)
    // Label the switch inputs [0..7] (1..8 on the physical switch panel) (top-to-bottom).
-   m5_if(m5_in_fpga, ['m5+tt_input_labels_viz(['"Value[0]", "Value[1]", "Value[2]", "Value[3]", "Op[0]", "Op[1]", "Op[2]", "="'])'])
+   m5+tt_input_labels_viz(['"UNUSED", "UNUSED", "UNUSED", "UNUSED", "UNUSED", "UNUSED", "UNUSED", "UNUSED"'])
 
 \TLV
    /* verilator lint_off UNOPTFLAT */
-   m5_if(m5_in_fpga, ['m5+tt_lab()'], ['m5+calc()'])
+   m5_if(m5_in_fpga, ['m5+tt_lab()'], ['m5+cpu()'])
 
 \SV
 endmodule
