@@ -328,7 +328,7 @@
    
    // Assert these to end simulation (before Makerchip cycle limit).
    // Note, for Makerchip simulation these are passed in uo_out to top-level module's passed/failed signals.
-   *passed = *top.cyc_cnt > 200;
+   //*passed = *top.cyc_cnt > 200;
    *passed = |cpu/xreg[15]>>5$value == {1+2+3+4+5+6+7+8+9};
    *failed = 1'b0;
    
