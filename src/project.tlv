@@ -50,9 +50,9 @@
    `include "uart_tx.sv"                               
       
 \TLV my_design()
-   $rx_serial_in = *ui_in[1];
+   $rx_serial_in = *ui_in[5];
    \SV_plus
-      uart_rx #( .FREQUENCY(20000000), .BAUD_RATE(9600) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
+      uart_rx #( .FREQUENCY(40000000), .BAUD_RATE(9600) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
    
    $trig = (!>>1$rx_done && $rx_done) ? 1'b1 : 1'b0;
 
