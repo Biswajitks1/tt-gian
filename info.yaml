@@ -21,6 +21,8 @@ project:
   # Verilog/TL-Verilog source files must be in ./src and you must list each Verilog source file separately, one per line:
   source_files:        
     - "project.sv"
+    - "uart_rx.sv"
+    - "uart_tx.sv"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 pinout:
