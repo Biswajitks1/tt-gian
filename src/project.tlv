@@ -159,8 +159,8 @@
          endmodule
       
 \TLV my_design()
-   $rx_serial_in = *ui_in[5];
-   $accum[3:0] = (>>1$accum == 4'd15) ? 4'd15 : >>1$accum + *ui_in[5];
+   $rx_serial_in = *ui_in[6];
+   $accum[3:0] = (>>1$accum == 4'd15) ? 4'd15 : >>1$accum + *ui_in[6];
    \SV_plus
       uart_rx #( .FREQUENCY(20000000), .BAUD_RATE(115200) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
    
