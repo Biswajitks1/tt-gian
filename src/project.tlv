@@ -56,7 +56,7 @@
    
    $trig = (!>>1$rx_done && $rx_done) ? 1'b1 : 1'b0;
 
-   $digit[3:0] = $trig ? $rx_byte[3:0] : 4'b0 ;
+   $digit[3:0] = $trig ? $rx_byte[3:0] : >>1$digit ;
    *uo_out =   $digit == 4'd0
                    ? 8'b0011_1111 :
                $digit == 4'd1
