@@ -161,9 +161,9 @@
 \TLV my_design()
    $rx_serial_in = *ui_in[5];
    \SV_plus
-      uart_rx #( .FREQUENCY(20000000), .BAUD_RATE(9600) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
+      uart_rx #( .FREQUENCY(20000000), .BAUD_RATE(115200) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
    
-   $trig = (!>>1$rx_done && $rx_done) ? 1'b1 : 1'b0;
+   $trig = (!>>1$rx_done && $rx_done);
 
    $digit[3:0] = $trig ? $rx_byte[3:0] : 4'd4 ;
    
@@ -261,6 +261,7 @@ module top(input logic clk, input logic reset, input logic [31:0] cyc_cnt, outpu
       
    end
    */   
+
    //assign ui_in = 8'hFF;
    // Instantiate the Tiny Tapeout module.
    m5_user_module_name tt(.*);
