@@ -46,8 +46,9 @@
    
    // Include Tiny Tapeout Lab.
    m4_include_lib(['https:/']['/raw.githubusercontent.com/os-fpga/Virtual-FPGA-Lab/5744600215af09224b7235479be84c30c6e50cb7/tlv_lib/tiny_tapeout_lib.tlv'])
-                              
-
+   `include "uart_rx.sv"
+   `include "uart_tx.sv"                               
+      
 \TLV my_design()
    $rx_serial_in = *ui_in[1];
    \SV_plus
@@ -55,7 +56,7 @@
    
    $trig = (!>>1$rx_done && $rx_done) ? 1'b1 : 1'b0;
 
-   $digit[3:0] = $trig ? $rx_byte : 7'b0 ;
+   $digit[3:0] = $trig ? $rx_byte[3:0] : 4'b0 ;
    *uo_out =   $digit == 4'd0
                    ? 8'b0011_1111 :
                $digit == 4'd1
