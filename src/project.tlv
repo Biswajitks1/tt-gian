@@ -50,16 +50,18 @@
    `include "uart_tx.sv"                               
       
 \TLV my_design()
-   $rx_serial_in = *ui_in[1];
-   \SV_plus
-      uart_rx #( .FREQUENCY(40000000), .BAUD_RATE(9600) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
+   //$rx_serial_in = *ui_in[1];
+   //\SV_plus
+      //uart_rx #( .FREQUENCY(40000000), .BAUD_RATE(9600) ) uart_rx_inst(.clk(*clk), .reset(*reset), .rx_serial($rx_serial_in), .rx_done($$rx_done), .rx_byte($$rx_byte[7:0]) );
    
-   $trig = (!>>1$rx_done && $rx_done) ? 1'b1 : 1'b0;
+   //$trig = (!>>1$rx_done && $rx_done) ? 1'b1 : 1'b0;
 
-   $digit[3:0] = $trig ? $rx_byte[3:0] : >>1$digit ;
+   //$digit[3:0] = $trig ? $rx_byte[3:0] : >>1$digit ;
    //$digit[3:0] = 4'd0;
-   $test = 1'd0;
-   *uo_out =   $test == 1'd0
+   //$test = 1'd0;
+   *uo_out = 8'b0011_1111;
+   /*
+   //*uo_out =   $test == 1'd0
                    ? 8'b0011_1111 :
                $digit == 4'd1
                    ? 8'b00000110 :
@@ -92,6 +94,7 @@
                $digit == 4'd15
                    ? 8'b01110001 :
                    8'b00000001;
+   */
    // ==================
    // ==================
    // |                |
