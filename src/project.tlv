@@ -59,7 +59,7 @@
                  output logic [7:0] rx_byte
              );
 
-             localparam int CLKS_PER_BIT = FREQUENCY / (16 * BAUD_RATE);
+             localparam int CLKS_PER_BIT = FREQUENCY / BAUD_RATE;
 
              typedef enum logic [2:0] {
                  s_IDLE          = 3'b000,
